@@ -1,0 +1,12 @@
+{
+    "beginner": {
+        "easy_content": -0.2019424519375344,
+        "medium_content": -0.42559721908381004,
+        "hard_content": -0.5812697077127689
+    },
+    "intermediate": {
+        "easy_content": -0.026440488999999998,
+        "medium_content": 0.0,
+        "hard_content": 0.0
+    }
+}
