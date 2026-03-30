@@ -8,10 +8,10 @@ client = Groq(api_key=os.getenv("GROQ_API_KEY"))
 
 # Active Groq models in priority order — DO NOT add llama-3.1-70b-versatile (decommissioned)
 GROQ_MODEL_FALLBACK = [
-    "llama-3.3-70b-versatile",   # best quality, 100k TPD free tier
-    "llama3-70b-8192",           # fallback 70b
-    "llama-3.1-8b-instant",      # fast fallback when rate limited
-    "llama3-8b-8192",            # last resort
+    "llama-3.3-70b-versatile",   # best quality
+    "llama-3.1-8b-instant",      # fast fallback
+    "mixtral-8x7b-32768",        # fallback mixtral
+    "gemma2-9b-it",              # last resort
 ]
 
 def generate_llm_content(messages):
@@ -94,29 +94,22 @@ def parse_llm_response(response_text):
         response_text = re.sub(r"(?i)END_SUGGESTIONS", "", response_text)
         response_text = response_text.strip()
 
-        # Strict split logic: only split when clear quiz markers exist.
-        # Avoid splitting on generic numbered explanations like "1. ..."
-        marker_pattern = r"(?i)(---\s*\n|###\s*.*?(?:MULTIPLE|QUEST|QUIZ|MCQ)|(?:\n|^)\s*QUESTION\s*[\d\.\:]*\s*:)"
-        match = re.search(marker_pattern, response_text)
-        
-        if match:
-            split_point = match.start()
+        # Only split when there is strong evidence of MCQ payload.
+        # This avoids truncating regular lessons that include markdown separators or numbered lists.
+        has_mcq_markers = bool(
+            re.search(r"(?im)^\s*QUESTION\s*[\d\.\:]*\s*:", response_text)
+            and re.search(r"(?im)^\s*OPTIONS\s*:\s*$", response_text)
+            and re.search(r"(?im)^\s*CORRECT[_\s]*ANSWER\s*:\s*[A-D]\s*$", response_text)
+        )
+
+        if has_mcq_markers:
+            match = re.search(r"(?im)^\s*QUESTION\s*[\d\.\:]*\s*:", response_text)
+            split_point = match.start() if match else 0
             data["explanation"] = response_text[:split_point].strip()
             questions_payload = response_text[split_point:].strip()
         else:
-            # Emergency split: Check if "QUESTION:" or "---" exists anywhere
-            if "---" in response_text:
-                parts = response_text.split("---", 1)
-                data["explanation"] = parts[0].strip()
-                questions_payload = parts[1]
-            elif "QUESTION:" in response_text.upper():
-                parts = re.split(r"(?i)QUESTION:", response_text, 1)
-                data["explanation"] = parts[0].strip()
-                questions_payload = "QUESTION:" + parts[1]
-            else:
-                # If we identify it's an assignment but no clear split, 
-                # keep the whole thing but don't fail parsing
-                questions_payload = response_text
+            questions_payload = ""
+            data["explanation"] = response_text.strip()
 
         # Question parsing - Split by standard question markers
         # Captures: "QUESTION:", "1.", "2.", "Question 1:", etc.
